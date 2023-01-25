@@ -17,52 +17,56 @@
 
 name: Build and Test
 
-on: push
+on: [push, pull_request]
 
 jobs:
-  build-aarch64:
-    name: Build Parquet with JDK ${{ matrix.java }} and ${{ matrix.codecs }} on aarch64
+    debian:
+    name: Build Parquet with JDK ${{ matrix.title }} and ${{ matrix.codes }}
     runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.pull_request.title, 'WIP') }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        java: [ '11' ]
-        codecs: [ 'uncompressed,brotli', 'gzip,snappy' ]
-
+        java: [8, 11, 17]
+        codes: [ 'uncompressed,brotli', 'gzip,snappy' ]
+        include:
+        - java: 8
+          title: AMD64 Debian 9 Java JDK 8 Maven 3.5.4
+          maven: 3.5.4
+          image: debian-java
+        - java: 11
+          title: AMD64 Debian 9 Java JDK 11 Maven 3.6.2
+          maven: 3.6.2
+          image: debian-java
+        - java: 17
+          title: AMD64 Oracle Linux Server 8.5 Java JDK 17 Maven 3.8.5
+          maven: 3.8.5
+          image: oracle-java
+    env:
+      JDK: ${{ matrix.java }}
+      MAVEN: ${{ matrix.maven }}
     steps:
-    - name: Checkout
-      uses: actions/checkout@master
-
-    - name: Cache Local Maven Repository
-      uses: actions/cache@v3
-      with:
-        path: ~/.m2/repository
-        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-maven-
-    - name: Test
-      uses: uraimo/run-on-arch-action@v2
-      with:
-        arch: aarch64
-        distro: ubuntu22.04
-        githubToken: ${{ github.token }}
-        env: |
+      - uses: actions/checkout@master
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v1
+        with:
+          java-version: ${{ matrix.java }}
+      - name: before_install
+        env:
           CI_TARGET_BRANCH: $GITHUB_HEAD_REF
-          TEST_CODECS: ${{ matrix.codecs }}
-          JAVA_VERSION: ${{ matrix.java }}
-        dockerRunArgs: |
-          --volume "${PWD}:/parquet" --volume "$HOME/.m2/repository:/root/.m2/repository"
-        install: |
-          apt-get update -q -y
-          apt-get install -q -y openjdk-${{ matrix.java }}-jdk maven thrift-compiler git
         run: |
-          set -x
-          export JAVA_HOME=/usr/lib/jvm/java-${{ matrix.java }}-openjdk-arm64  # for maven-javadoc-plugin
-          java --version
-          mvn --version
-          git config --global --add safe.directory /parquet
-          cd /parquet
-          export MAVEN_OPTS=$(mvn help:evaluate -Dexpression=extraJavaTestArgs -q -DforceStdout)
-          mvn install --batch-mode --no-transfer-progress -DskipTests=true -Dmaven.javadoc.skip=true -Dsource.skip=true -Djava.version=${{ matrix.java }}
-          mvn verify --batch-mode --no-transfer-progress javadoc:javadoc -Pci-test
-          
+          bash dev/ci-before_install.sh
+      - name: install
+        run: |
+          EXTRA_JAVA_TEST_ARGS=$(mvn help:evaluate -Dexpression=extraJavaTestArgs -q -DforceStdout)
+          export MAVEN_OPTS="$MAVEN_OPTS $EXTRA_JAVA_TEST_ARGS"
+          mvn install --batch-mode -DskipTests=true -Dmaven.javadoc.skip=true -Dsource.skip=true -Djava.version=${{ matrix.java }}
+      - name: verify
+        env:
+          TEST_CODECS: ${{ matrix.codes }}
+          JAVA_VERSION: ${{ matrix.java }}
+        run: |
+          EXTRA_JAVA_TEST_ARGS=$(mvn help:evaluate -Dexpression=extraJavaTestArgs -q -DforceStdout)
+          export MAVEN_OPTS="$MAVEN_OPTS $EXTRA_JAVA_TEST_ARGS"
+          mvn verify --batch-mode javadoc:javadoc -Pci-test
