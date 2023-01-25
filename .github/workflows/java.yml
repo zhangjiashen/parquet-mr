@@ -23,7 +23,6 @@ jobs:
   debian:
     runs-on: ubuntu-latest
     if: ${{ !contains(github.event.pull_request.title, 'WIP') }}
-    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
