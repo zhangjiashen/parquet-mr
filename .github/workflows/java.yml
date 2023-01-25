@@ -26,31 +26,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: [8, 11, 17]
+        jdk: [8, 11, 17]
         codes: [ 'uncompressed,brotli', 'gzip,snappy' ]
         include:
-        - java: 8
+        - jdk: 8
           title: AMD64 Debian 9 Java JDK 8 Maven 3.5.4
           maven: 3.5.4
           image: debian-java
-        - java: 11
+        - jdk: 11
           title: AMD64 Debian 9 Java JDK 11 Maven 3.6.2
           maven: 3.6.2
           image: debian-java
-        - java: 17
+        - jdk: 17
           title: AMD64 Oracle Linux Server 8.5 Java JDK 17 Maven 3.8.5
           maven: 3.8.5
           image: oracle-java
     name: Build Parquet with JDK ${{ matrix.title }} and ${{ matrix.codes }}
     env:
-      JDK: ${{ matrix.java }}
+      JDK: ${{ matrix.jdk }}
       MAVEN: ${{ matrix.maven }}
     steps:
       - uses: actions/checkout@master
-      - name: Set up JDK ${{ matrix.java }}
+      - name: Set up JDK ${{ matrix.jdk }}
         uses: actions/setup-java@v1
         with:
-          java-version: ${{ matrix.java }}
+          java-version: ${{ matrix.jdk }}
       - name: before_install
         env:
           CI_TARGET_BRANCH: $GITHUB_HEAD_REF
@@ -60,11 +60,11 @@ jobs:
         run: |
           EXTRA_JAVA_TEST_ARGS=$(mvn help:evaluate -Dexpression=extraJavaTestArgs -q -DforceStdout)
           export MAVEN_OPTS="$MAVEN_OPTS $EXTRA_JAVA_TEST_ARGS"
-          mvn install --batch-mode -DskipTests=true -Dmaven.javadoc.skip=true -Dsource.skip=true -Djava.version=${{ matrix.java }}
+          mvn install --batch-mode -DskipTests=true -Dmaven.javadoc.skip=true -Dsource.skip=true -Djava.version=${{ matrix.jdk }}
       - name: verify
         env:
           TEST_CODECS: ${{ matrix.codes }}
-          JAVA_VERSION: ${{ matrix.java }}
+          JAVA_VERSION: ${{ matrix.jdk }}
         run: |
           EXTRA_JAVA_TEST_ARGS=$(mvn help:evaluate -Dexpression=extraJavaTestArgs -q -DforceStdout)
           export MAVEN_OPTS="$MAVEN_OPTS $EXTRA_JAVA_TEST_ARGS"
