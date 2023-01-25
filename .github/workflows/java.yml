@@ -20,7 +20,7 @@ name: Build and Test
 on: [push, pull_request]
 
 jobs:
-    debian:
+  debian:
     runs-on: ubuntu-latest
     if: ${{ !contains(github.event.pull_request.title, 'WIP') }}
     timeout-minutes: 30
