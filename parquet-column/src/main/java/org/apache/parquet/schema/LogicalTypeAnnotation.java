@@ -80,7 +80,7 @@ public abstract class LogicalTypeAnnotation {
         if (params.size() != 2) {
           throw new RuntimeException("Expecting 2 parameters for decimal logical type, got " + params.size());
         }
-        return decimalType(Integer.valueOf(params.get(1)), Integer.valueOf(params.get(0)));
+        return decimalType(Integer.parseInt(params.get(1)), Integer.parseInt(params.get(0)));
       }
     },
     DATE {
@@ -114,7 +114,7 @@ public abstract class LogicalTypeAnnotation {
         if (params.size() != 2) {
           throw new RuntimeException("Expecting 2 parameters for integer logical type, got " + params.size());
         }
-        return intType(Integer.valueOf(params.get(0)), Boolean.parseBoolean(params.get(1)));
+        return intType(Integer.parseInt(params.get(0)), Boolean.parseBoolean(params.get(1)));
       }
     },
     JSON {
@@ -156,10 +156,9 @@ public abstract class LogicalTypeAnnotation {
    * Those logical type implementations, which don't have a corresponding mapping should return null.
    * <p>
    * API should be considered private
-   * <p>
-   * Deprecated: Please use the LogicalTypeAnnotation itself
    *
    * @return the OriginalType representation of the new logical type, or null if there's none
+   * @deprecated Please use the LogicalTypeAnnotation itself
    */
   @Deprecated
   public abstract OriginalType toOriginalType();
@@ -183,10 +182,7 @@ public abstract class LogicalTypeAnnotation {
 
   @Override
   public String toString() {
-    StringBuilder sb = new StringBuilder();
-    sb.append(getType());
-    sb.append(typeParametersAsString());
-    return sb.toString();
+    return getType() + typeParametersAsString();
   }
 
   PrimitiveStringifier valueStringifier(PrimitiveType primitiveType) {
@@ -327,10 +323,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -372,10 +367,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -412,10 +406,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -452,10 +445,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -511,10 +503,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -534,13 +525,7 @@ public abstract class LogicalTypeAnnotation {
 
     @Override
     protected String typeParametersAsString() {
-      StringBuilder sb = new StringBuilder();
-      sb.append("(");
-      sb.append(precision);
-      sb.append(",");
-      sb.append(scale);
-      sb.append(")");
-      return sb.toString();
+      return "(" + precision + "," + scale + ")";
     }
 
     @Override
@@ -570,10 +555,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -625,10 +609,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -655,13 +638,7 @@ public abstract class LogicalTypeAnnotation {
 
     @Override
     protected String typeParametersAsString() {
-      StringBuilder sb = new StringBuilder();
-      sb.append("(");
-      sb.append(unit);
-      sb.append(",");
-      sb.append(isAdjustedToUTC);
-      sb.append(")");
-      return sb.toString();
+      return "(" + unit + "," + isAdjustedToUTC + ")";
     }
 
     public TimeUnit getUnit() {
@@ -711,10 +688,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -741,13 +717,7 @@ public abstract class LogicalTypeAnnotation {
 
     @Override
     protected String typeParametersAsString() {
-      StringBuilder sb = new StringBuilder();
-      sb.append("(");
-      sb.append(unit);
-      sb.append(",");
-      sb.append(isAdjustedToUTC);
-      sb.append(")");
-      return sb.toString();
+      return "(" + unit + "," + isAdjustedToUTC + ")";
     }
 
     public TimeUnit getUnit() {
@@ -804,10 +774,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -838,13 +807,7 @@ public abstract class LogicalTypeAnnotation {
 
     @Override
     protected String typeParametersAsString() {
-      StringBuilder sb = new StringBuilder();
-      sb.append("(");
-      sb.append(bitWidth);
-      sb.append(",");
-      sb.append(isSigned);
-      sb.append(")");
-      return sb.toString();
+      return "(" + bitWidth + "," + isSigned + ")";
     }
 
     public int getBitWidth() {
@@ -882,10 +845,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -927,10 +889,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -973,10 +934,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -1043,10 +1003,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
@@ -1100,10 +1059,9 @@ public abstract class LogicalTypeAnnotation {
 
     /**
      * API Should be considered private
-     * <p>
-     * Deprecated: Please use the LogicalTypeAnnotation itself
      *
      * @return the original type
+     * @deprecated Please use the LogicalTypeAnnotation itself
      */
     @Override
     @Deprecated
