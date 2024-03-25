@@ -23,6 +23,18 @@
     <tag>apache-parquet-1.13.1-rc0</tag>
   </scm>
 
+  <!-- You need this to publish to Uber's Artifactory -->
+  <distributionManagement>
+    <repository>
+      <id>central</id>
+      <url>http://artifactory.uber.internal:4587/artifactory/libs-release-local/</url>
+    </repository>
+    <snapshotRepository>
+      <id>snapshots</id>
+      <url>http://artifactory.uber.internal:4587/artifactory/libs-snapshot-local/</url>
+    </snapshotRepository>
+  </distributionManagement>
+
   <licenses>
     <license>
       <name>The Apache Software License, Version 2.0</name>
@@ -507,6 +519,9 @@
             <exclude>thrift-${thrift.version}/**</exclude>
             <exclude>thrift-${thrift.version}.tar.gz</exclude>
             <exclude>**/dependency-reduced-pom.xml</exclude>
+            <exclude>.arcconfig</exclude>
+            <exclude>METADATA</exclude>
+            <exclude>.buildkite/**</exclude>
           </excludes>
         </configuration>
       </plugin>
@@ -551,6 +566,9 @@
               <exclude>org.apache.parquet.column.values.dictionary.DictionaryValuesWriter#dictionaryByteSize</exclude>
               <!-- In PARQUET-2158 the return type of PathGlobPattern was changed to be compatible with Hadoop 3 -->
               <exclude>org.apache.parquet.thrift.projection.deprecated.PathGlobPattern</exclude>
+              <exclude>org.apache.parquet.column.page.PageReader#isNullMaskedColumn</exclude>
+              <exclude>org.apache.parquet.crypto.InternalFileDecryptor</exclude>
+              <exclude>org.apache.parquet.format.converter.ParquetMetadataConverter</exclude>
             </excludes>
           </parameter>
         </configuration>

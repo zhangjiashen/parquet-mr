@@ -1,0 +1,9 @@
+version: 1.0
+
+uown: 2579d66d-13b0-4f11-8784-835c47ffb56e # hadoop-security
+
+command: "mvn --show-version --batch-mode --update-snapshots clean deploy -DskipITs"
+
+docker:
+  base-image: 127.0.0.1:5055/uber-usi/datasec-parquet-image:bkt1-produ-1708122760-de865
+  shell: true

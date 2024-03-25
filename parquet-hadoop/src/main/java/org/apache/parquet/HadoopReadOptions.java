@@ -28,12 +28,16 @@ import org.apache.parquet.crypto.FileDecryptionProperties;
 import org.apache.parquet.filter2.compat.FilterCompat;
 import org.apache.parquet.format.converter.ParquetMetadataConverter.MetadataFilter;
 import org.apache.parquet.hadoop.util.HadoopCodecs;
+import org.apache.parquet.crypto.CryptoClassLoader;
 
+import java.io.IOException;
 import java.util.Map;
 
 import static org.apache.parquet.hadoop.ParquetInputFormat.COLUMN_INDEX_FILTERING_ENABLED;
 import static org.apache.parquet.hadoop.ParquetInputFormat.DICTIONARY_FILTERING_ENABLED;
 import static org.apache.parquet.hadoop.ParquetInputFormat.BLOOM_FILTERING_ENABLED;
+import static org.apache.parquet.hadoop.ParquetInputFormat.READ_MASKED_VALUE_ENABLED;
+import static org.apache.parquet.hadoop.ParquetInputFormat.MASKED_COLUMN_VISIBLE_ENABLED;
 import static org.apache.parquet.hadoop.ParquetInputFormat.getFilter;
 import static org.apache.parquet.hadoop.ParquetInputFormat.PAGE_VERIFY_CHECKSUM_ENABLED;
 import static org.apache.parquet.hadoop.ParquetInputFormat.RECORD_FILTERING_ENABLED;
@@ -52,6 +56,8 @@ public class HadoopReadOptions extends ParquetReadOptions {
                             boolean useColumnIndexFilter,
                             boolean usePageChecksumVerification,
                             boolean useBloomFilter,
+                            boolean readMaskedValue,
+                            boolean maskedColVisibble,
                             FilterCompat.Filter recordFilter,
                             MetadataFilter metadataFilter,
                             CompressionCodecFactory codecFactory,
@@ -62,8 +68,8 @@ public class HadoopReadOptions extends ParquetReadOptions {
                             FileDecryptionProperties fileDecryptionProperties) {
     super(
         useSignedStringMinMax, useStatsFilter, useDictionaryFilter, useRecordFilter, useColumnIndexFilter,
-        usePageChecksumVerification, useBloomFilter, recordFilter, metadataFilter, codecFactory, allocator,
-        maxAllocationSize, properties, fileDecryptionProperties
+      usePageChecksumVerification, useBloomFilter, readMaskedValue, maskedColVisibble,
+      recordFilter, metadataFilter, codecFactory, allocator, maxAllocationSize, properties, fileDecryptionProperties
     );
     this.conf = conf;
   }
@@ -115,6 +121,8 @@ public class HadoopReadOptions extends ParquetReadOptions {
       if (badRecordThresh != null) {
         set(BAD_RECORD_THRESHOLD_CONF_KEY, badRecordThresh);
       }
+      withReadMaskedValue(conf.getBoolean(READ_MASKED_VALUE_ENABLED, false));
+      withMaskedColumnVisible(conf.getBoolean(MASKED_COLUMN_VISIBLE_ENABLED, false));
     }
 
     @Override
@@ -125,16 +133,27 @@ public class HadoopReadOptions extends ParquetReadOptions {
       }
       return new HadoopReadOptions(
         useSignedStringMinMax, useStatsFilter, useDictionaryFilter, useRecordFilter,
-        useColumnIndexFilter, usePageChecksumVerification, useBloomFilter, recordFilter, metadataFilter,
-        codecFactory, allocator, maxAllocationSize, properties, conf, fileDecryptionProperties);
+        useColumnIndexFilter, usePageChecksumVerification, useBloomFilter,
+        readMaskedValue, maskedColVisible, recordFilter, metadataFilter, codecFactory,
+        allocator, maxAllocationSize, properties, conf, fileDecryptionProperties);
     }
   }
 
   private static FileDecryptionProperties createDecryptionProperties(Path file, Configuration hadoopConfig) {
-    DecryptionPropertiesFactory cryptoFactory = DecryptionPropertiesFactory.loadFactory(hadoopConfig);
-    if (null == cryptoFactory) {
-      return null;
+    FileDecryptionProperties fileDecryptionProperties = null;
+    try {
+       fileDecryptionProperties  = CryptoClassLoader.getFileDecryptionPropertiesOrNull(hadoopConfig);
+    } catch (IOException e) {
+        throw new RuntimeException(e);
     }
-    return cryptoFactory.getFileDecryptionProperties(hadoopConfig, file);
+
+    return fileDecryptionProperties;
+
+//    DecryptionPropertiesFactory cryptoFactory = DecryptionPropertiesFactory.loadFactory(hadoopConfig);
+//
+//    if (null == cryptoFactory) {
+//      return null;
+//    }
+//    return cryptoFactory.getFileDecryptionProperties(hadoopConfig, file);
   }
 }
