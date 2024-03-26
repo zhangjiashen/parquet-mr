@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+import org.apache.parquet.column.CellManager;
 import org.apache.parquet.column.ColumnWriteStore;
 import org.apache.parquet.column.ParquetProperties;
 import org.apache.parquet.column.values.bloomfilter.BloomFilterWriteStore;
@@ -34,6 +35,7 @@ import org.apache.parquet.hadoop.CodecFactory.BytesCompressor;
 import org.apache.parquet.hadoop.api.WriteSupport;
 import org.apache.parquet.hadoop.api.WriteSupport.FinalizedWriteContext;
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
+import org.apache.parquet.hadoop.util.CellEncryptionUtils;
 import org.apache.parquet.io.ColumnIOFactory;
 import org.apache.parquet.io.MessageColumnIO;
 import org.apache.parquet.io.api.RecordConsumer;
@@ -112,10 +114,19 @@ class InternalParquetRecordWriter<T> {
         fileEncryptor, rowGroupOrdinal);
     pageStore = columnChunkPageWriteStore;
     bloomFilterWriteStore = columnChunkPageWriteStore;
-
+    CellManager cellManager = parquetFileWriter.getCellManager();
+    // disable dictionary encoding for columns with cell level encryption before newColumnWriteStore
+    if (cellManager != null) {
+      CellEncryptionUtils.validateCellManagerWithSchema(cellManager, schema);
+      props.disableDictionaryForColumns(CellEncryptionUtils.getAllOriginalColumnDescriptors(cellManager, schema));
+    }
     columnStore = props.newColumnWriteStore(schema, pageStore, bloomFilterWriteStore);
     MessageColumnIO columnIO = new ColumnIOFactory(validating).getColumnIO(schema);
-    this.recordConsumer = columnIO.getRecordWriter(columnStore);
+    if (cellManager != null) {
+      this.recordConsumer = columnIO.getRecordWriter(columnStore, cellManager);
+    } else {
+      this.recordConsumer = columnIO.getRecordWriter(columnStore);
+    }
     writeSupport.prepareForWrite(recordConsumer);
   }
 

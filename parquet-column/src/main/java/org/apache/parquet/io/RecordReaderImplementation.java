@@ -267,7 +267,7 @@ class RecordReaderImplementation<T> extends RecordReader<T> {
         current = current.getConverter(indexFieldPath[j]).asGroupConverter();
         groupConverterPaths[i][j] = current;
       }
-      leafConverters[i] = current.getConverter(indexFieldPath[indexFieldPath.length - 1]).asPrimitiveConverter();
+//      leafConverters[i] = current.getConverter(indexFieldPath[indexFieldPath.length - 1]).asPrimitiveConverter();
       columnReaders[i] = columnStore.getColumnReader(leafColumnIO.getColumnDescriptor());
       int maxRepetitionLevel = leafColumnIO.getRepetitionLevel();
       nextColumnIdxForRepLevel[i] = new int[maxRepetitionLevel+1];

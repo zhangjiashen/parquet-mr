@@ -31,7 +31,11 @@ import org.apache.hadoop.conf.Configuration;
 
 import org.apache.parquet.HadoopReadOptions;
 import org.apache.parquet.ParquetReadOptions;
+import org.apache.parquet.column.CellManager;
+import org.apache.parquet.column.CellManagerUtils;
 import org.apache.parquet.column.page.PageReadStore;
+import org.apache.parquet.crypto.CellManagerFactory;
+import org.apache.parquet.crypto.CryptoClassLoader;
 import org.apache.parquet.filter.UnboundRecordFilter;
 import org.apache.parquet.filter2.compat.FilterCompat;
 import org.apache.parquet.filter2.compat.FilterCompat.Filter;
@@ -60,6 +64,7 @@ class InternalParquetRecordReader<T> {
   private static final Logger LOG = LoggerFactory.getLogger(InternalParquetRecordReader.class);
 
   private ColumnIOFactory columnIOFactory = null;
+  private CellManager cellManager = null; // optional
   private final Filter filter;
   private boolean filterRecords = true;
 
@@ -141,7 +146,7 @@ class InternalParquetRecordReader<T> {
       BenchmarkCounter.incrementTime(timeSpentReading);
       if (LOG.isInfoEnabled()) LOG.info("block read in memory in {} ms. row count = {}", timeSpentReading, pages.getRowCount());
       LOG.debug("initializing Record assembly with requested schema {}", requestedSchema);
-      MessageColumnIO columnIO = columnIOFactory.getColumnIO(requestedSchema, fileSchema, strictTypeChecking);
+      MessageColumnIO columnIO = columnIOFactory.getColumnIO(requestedSchema, fileSchema, strictTypeChecking, cellManager);
       recordReader = columnIO.getRecordReader(pages, recordConverter,
           filterRecords ? filter : FilterCompat.NOOP);
       startedAssemblingCurrentBlockAt = System.currentTimeMillis();
@@ -188,7 +193,9 @@ class InternalParquetRecordReader<T> {
     conf.set(HIDDEN_COLUMN, stringfyColumnPaths(hiddenColumns));
     ReadSupport.ReadContext readContext = readSupport.init(new InitContext(conf, toSetMultiMap(fileMetadata), fileSchema));
     this.columnIOFactory = new ColumnIOFactory(parquetFileMetadata.getCreatedBy());
-    this.requestedSchema = readContext.getRequestedSchema();
+    this.cellManager = tryGetCellManager(conf, fileSchema, options.getCellManager());
+    this.requestedSchema = CellManagerUtils.addMissingRequestedColumns(
+      cellManager, readContext.getRequestedSchema(), fileSchema);
     this.columnCount = requestedSchema.getPaths().size();
     // Setting the projection schema before running any filtering (e.g. getting filtered record count)
     // because projection impacts filtering
@@ -227,6 +234,29 @@ class InternalParquetRecordReader<T> {
     this.filterRecords = configuration.getBoolean(RECORD_FILTERING_ENABLED, true);
     configuration.unset(HIDDEN_COLUMN);
     LOG.info("RecordReader initialized will read a total of {} records.", total);
+  }
+
+  /**
+   * Try get a CellManager from "override" if provided, or otherwise from conf
+   * configured factory.
+   * @return The override CellManager if provided, otherwise try get one from
+   * conf configured factory.
+   */
+  private static CellManager tryGetCellManager(Configuration conf, MessageType fileSchema,
+                                               CellManager override) {
+    if (override != null) {
+      return override;
+    }
+    return tryGetCellManager(conf, fileSchema);
+  }
+
+  /**
+   * Try get a CellManager from conf configured factory.
+   * @return CellManager, or null (cell encryption not enabled for this).
+   */
+  private static CellManager tryGetCellManager(Configuration conf, MessageType fileSchema) {
+    CellManagerFactory factory = CryptoClassLoader.getCellManagerFactory(conf);
+    return factory != null ? factory.get(conf, fileSchema) : null;
   }
 
   public boolean nextKeyValue() throws IOException, InterruptedException {
@@ -271,7 +301,7 @@ class InternalParquetRecordReader<T> {
 
         LOG.debug("read value: {}", currentValue);
       } catch (RuntimeException e) {
-        throw new ParquetDecodingException(format("Can not read value at %d in block %d in file %s", current, currentBlock, reader.getPath()), e);
+        throw new ParquetDecodingException(format("Can not read value at %d in block %d in file %s: %s", current, currentBlock, reader.getFile(), e), e);
       }
     }
     return true;

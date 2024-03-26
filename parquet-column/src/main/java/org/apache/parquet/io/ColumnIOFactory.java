@@ -21,6 +21,7 @@ package org.apache.parquet.io;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.parquet.column.CellManager;
 import org.apache.parquet.schema.GroupType;
 import org.apache.parquet.schema.MessageType;
 import org.apache.parquet.schema.PrimitiveType;
@@ -43,17 +44,20 @@ public class ColumnIOFactory {
     private int currentRequestedIndex;
     private Type currentRequestedType;
     private boolean strictTypeChecking;
+    private final CellManager cellManager; // optional
     
-    private ColumnIOCreatorVisitor(boolean validating, MessageType requestedSchema, String createdBy, boolean strictTypeChecking) {
+    private ColumnIOCreatorVisitor(boolean validating, MessageType requestedSchema, String createdBy,
+                                   boolean strictTypeChecking, CellManager cellManager) {
       this.validating = validating;
       this.requestedSchema = requestedSchema;
       this.createdBy = createdBy;
       this.strictTypeChecking = strictTypeChecking;
+      this.cellManager = cellManager;
     }
 
     @Override
     public void visit(MessageType messageType) {
-      columnIO = new MessageColumnIO(requestedSchema, validating, createdBy);
+      columnIO = new MessageColumnIO(requestedSchema, validating, createdBy, cellManager);
       visitChildren(columnIO, messageType, requestedSchema);
       columnIO.setLevels();
       columnIO.setLeaves(leaves);
@@ -148,7 +152,7 @@ public class ColumnIOFactory {
    * @return the corresponding serializing/deserializing structure
    */
   public MessageColumnIO getColumnIO(MessageType requestedSchema, MessageType fileSchema) {
-    return getColumnIO(requestedSchema, fileSchema, true);
+    return getColumnIO(requestedSchema, fileSchema, true, null);
   }
   
   /**
@@ -158,7 +162,11 @@ public class ColumnIOFactory {
    * @return the corresponding serializing/deserializing structure
    */
   public MessageColumnIO getColumnIO(MessageType requestedSchema, MessageType fileSchema, boolean strict) {
-    ColumnIOCreatorVisitor visitor = new ColumnIOCreatorVisitor(validating, requestedSchema, createdBy, strict);
+    return this.getColumnIO(requestedSchema, fileSchema, strict, null);
+  }
+
+  public MessageColumnIO getColumnIO(MessageType requestedSchema, MessageType fileSchema, boolean strict, CellManager cellManager) {
+    ColumnIOCreatorVisitor visitor = new ColumnIOCreatorVisitor(validating, requestedSchema, createdBy, strict, cellManager);
     fileSchema.accept(visitor);
     return visitor.getColumnIO();
   }

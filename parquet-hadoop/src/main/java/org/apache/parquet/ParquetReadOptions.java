@@ -21,6 +21,7 @@ package org.apache.parquet;
 
 import org.apache.parquet.bytes.ByteBufferAllocator;
 import org.apache.parquet.bytes.HeapByteBufferAllocator;
+import org.apache.parquet.column.CellManager;
 import org.apache.parquet.compression.CompressionCodecFactory;
 import org.apache.parquet.crypto.FileDecryptionProperties;
 import org.apache.parquet.filter2.compat.FilterCompat;
@@ -63,6 +64,7 @@ public class ParquetReadOptions {
   private final int maxAllocationSize;
   private final Map<String, String> properties;
   private final FileDecryptionProperties fileDecryptionProperties;
+  private final CellManager cellManager;
 
   ParquetReadOptions(boolean useSignedStringMinMax,
                      boolean useStatsFilter,
@@ -79,7 +81,8 @@ public class ParquetReadOptions {
                      ByteBufferAllocator allocator,
                      int maxAllocationSize,
                      Map<String, String> properties,
-                     FileDecryptionProperties fileDecryptionProperties) {
+                     FileDecryptionProperties fileDecryptionProperties,
+                     CellManager cellManager) {
     this.useSignedStringMinMax = useSignedStringMinMax;
     this.useStatsFilter = useStatsFilter;
     this.useDictionaryFilter = useDictionaryFilter;
@@ -96,6 +99,7 @@ public class ParquetReadOptions {
     this.maxAllocationSize = maxAllocationSize;
     this.properties = Collections.unmodifiableMap(properties);
     this.fileDecryptionProperties = fileDecryptionProperties;
+    this.cellManager = cellManager;
   }
 
   public boolean useSignedStringMinMax() {
@@ -172,6 +176,10 @@ public class ParquetReadOptions {
         : defaultValue;
   }
 
+  public CellManager getCellManager() {
+    return cellManager;
+  }
+
   public static Builder builder() {
     return new Builder();
   }
@@ -194,6 +202,7 @@ public class ParquetReadOptions {
     protected int maxAllocationSize = ALLOCATION_SIZE_DEFAULT;
     protected Map<String, String> properties = new HashMap<>();
     protected FileDecryptionProperties fileDecryptionProperties = null;
+    protected CellManager cellManager = null;
 
     public Builder useSignedStringMinMax(boolean useSignedStringMinMax) {
       this.useSignedStringMinMax = useSignedStringMinMax;
@@ -319,6 +328,11 @@ public class ParquetReadOptions {
       return this;
     }
 
+    public Builder withCellManager(CellManager cellManager) {
+      this.cellManager = cellManager;
+      return this;
+    }
+
     public Builder set(String key, String value) {
       properties.put(key, value);
       return this;
@@ -337,6 +351,7 @@ public class ParquetReadOptions {
       withAllocator(options.allocator);
       withPageChecksumVerification(options.usePageChecksumVerification);
       withDecryption(options.fileDecryptionProperties);
+      withCellManager(options.cellManager);
       for (Map.Entry<String, String> keyValue : options.properties.entrySet()) {
         set(keyValue.getKey(), keyValue.getValue());
       }
@@ -352,7 +367,7 @@ public class ParquetReadOptions {
         useSignedStringMinMax, useStatsFilter, useDictionaryFilter, useRecordFilter,
         useColumnIndexFilter, usePageChecksumVerification, useBloomFilter,
         readMaskedValue, maskedColVisible, recordFilter, metadataFilter,
-        codecFactory, allocator, maxAllocationSize, properties, fileDecryptionProperties);
+        codecFactory, allocator, maxAllocationSize, properties, fileDecryptionProperties, cellManager);
     }
   }
 }

@@ -300,6 +300,60 @@ abstract class ColumnWriterBase implements ColumnWriter {
     ++valueCount;
   }
 
+  @Override
+  public void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, int valueForStats) {
+    if (DEBUG) log(null, repetitionLevel, definitionLevel);
+    repetitionLevelColumn.writeInteger(repetitionLevel);
+    definitionLevelColumn.writeInteger(definitionLevel);
+    statistics.updateStats(valueForStats);
+    ++ valueCount;
+  }
+
+  @Override
+  public void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, long valueForStats) {
+    if (DEBUG) log(null, repetitionLevel, definitionLevel);
+    repetitionLevelColumn.writeInteger(repetitionLevel);
+    definitionLevelColumn.writeInteger(definitionLevel);
+    statistics.updateStats(valueForStats);
+    ++ valueCount;
+  }
+
+  @Override
+  public void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, boolean valueForStats) {
+    if (DEBUG) log(null, repetitionLevel, definitionLevel);
+    repetitionLevelColumn.writeInteger(repetitionLevel);
+    definitionLevelColumn.writeInteger(definitionLevel);
+    statistics.updateStats(valueForStats);
+    ++ valueCount;
+  }
+
+  @Override
+  public void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, Binary valueForStats) {
+    if (DEBUG) log(null, repetitionLevel, definitionLevel);
+    repetitionLevelColumn.writeInteger(repetitionLevel);
+    definitionLevelColumn.writeInteger(definitionLevel);
+    statistics.updateStats(valueForStats);
+    ++ valueCount;
+  }
+
+  @Override
+  public void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, float valueForStats) {
+    if (DEBUG) log(null, repetitionLevel, definitionLevel);
+    repetitionLevelColumn.writeInteger(repetitionLevel);
+    definitionLevelColumn.writeInteger(definitionLevel);
+    statistics.updateStats(valueForStats);
+    ++ valueCount;
+  }
+
+  @Override
+  public void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, double valueForStats) {
+    if (DEBUG) log(null, repetitionLevel, definitionLevel);
+    repetitionLevelColumn.writeInteger(repetitionLevel);
+    definitionLevelColumn.writeInteger(definitionLevel);
+    statistics.updateStats(valueForStats);
+    ++ valueCount;
+  }
+
   /**
    * Finalizes the Column chunk. Possibly adding extra pages if needed (dictionary, ...)
    * Is called right after writePage

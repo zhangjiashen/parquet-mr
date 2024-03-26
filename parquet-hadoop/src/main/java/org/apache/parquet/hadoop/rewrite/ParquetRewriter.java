@@ -160,7 +160,7 @@ public class ParquetRewriter implements Closeable {
     writer = new ParquetFileWriter(HadoopOutputFile.fromPath(outPath, conf), schema, writerMode,
             DEFAULT_BLOCK_SIZE, MAX_PADDING_SIZE_DEFAULT, DEFAULT_COLUMN_INDEX_TRUNCATE_LENGTH,
             DEFAULT_STATISTICS_TRUNCATE_LENGTH, ParquetProperties.DEFAULT_PAGE_WRITE_CHECKSUM_ENABLED,
-            options.getFileEncryptionProperties());
+            options.getFileEncryptionProperties(), null);
     writer.start();
   }
 

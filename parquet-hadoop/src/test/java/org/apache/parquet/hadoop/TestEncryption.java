@@ -173,7 +173,7 @@ public class TestEncryption {
       Path file = new Path(root, "m_" + encryptionMode + ".parquet.encrypted");
       ParquetWriter<Group> writer = new ParquetWriter<>(HadoopOutputFile.fromPath(file, conf),
          ParquetFileWriter.Mode.CREATE, new GroupWriteSupport(), UNCOMPRESSED, 1024, true, conf,
-         1024, ParquetProperties.builder().build(), encryptionPropertiesList[encryptionMode]);
+         1024, ParquetProperties.builder().build(), encryptionPropertiesList[encryptionMode], null);
       for (int i = 0; i < 1000; i++) {
         writer.write(
           f.newGroup()

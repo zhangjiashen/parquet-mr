@@ -26,9 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.apache.parquet.column.ColumnWriteStore;
-import org.apache.parquet.column.ColumnWriter;
-import org.apache.parquet.column.impl.ColumnReadStoreImpl;
+import org.apache.parquet.column.*;
+import org.apache.parquet.column.impl.*;
 import org.apache.parquet.column.page.PageReadStore;
 import org.apache.parquet.filter.UnboundRecordFilter;
 import org.apache.parquet.filter2.compat.FilterCompat;
@@ -41,6 +40,7 @@ import org.apache.parquet.filter2.predicate.FilterPredicate;
 import org.apache.parquet.filter2.recordlevel.FilteringRecordMaterializer;
 import org.apache.parquet.filter2.recordlevel.IncrementallyUpdatedFilterPredicate;
 import org.apache.parquet.filter2.recordlevel.IncrementallyUpdatedFilterPredicateBuilder;
+import org.apache.parquet.hadoop.metadata.ColumnPath;
 import org.apache.parquet.io.api.Binary;
 import org.apache.parquet.io.api.RecordConsumer;
 import org.apache.parquet.io.api.RecordMaterializer;
@@ -48,6 +48,7 @@ import org.apache.parquet.schema.MessageType;
 
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntIterator;
+import org.apache.parquet.schema.PrimitiveType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,11 +64,13 @@ public class MessageColumnIO extends GroupColumnIO {
 
   private final boolean validating;
   private final String createdBy;
+  private CellManager cellManager; // optional
 
-  MessageColumnIO(MessageType messageType, boolean validating, String createdBy) {
+  MessageColumnIO(MessageType messageType, boolean validating, String createdBy, CellManager cellManager) {
     super(messageType, null, 0);
     this.validating = validating;
     this.createdBy = createdBy;
+    this.cellManager = cellManager;
   }
 
   @Override
@@ -123,7 +126,7 @@ public class MessageColumnIO extends GroupColumnIO {
             MessageColumnIO.this,
             filteringRecordMaterializer,
             validating,
-            new ColumnReadStoreImpl(columns, filteringRecordMaterializer.getRootConverter(), getType(), createdBy));
+            new ColumnReadStoreImpl(columns, filteringRecordMaterializer.getRootConverter(), getType(), createdBy, cellManager));
       }
 
       @Override
@@ -132,7 +135,7 @@ public class MessageColumnIO extends GroupColumnIO {
             MessageColumnIO.this,
             recordMaterializer,
             validating,
-            new ColumnReadStoreImpl(columns, recordMaterializer.getRootConverter(), getType(), createdBy),
+            new ColumnReadStoreImpl(columns, recordMaterializer.getRootConverter(), getType(), createdBy, cellManager),
             unboundRecordFilterCompat.getUnboundRecordFilter(),
             columns.getRowCount()
         );
@@ -144,7 +147,7 @@ public class MessageColumnIO extends GroupColumnIO {
             MessageColumnIO.this,
             recordMaterializer,
             validating,
-            new ColumnReadStoreImpl(columns, recordMaterializer.getRootConverter(), getType(), createdBy));
+            new ColumnReadStoreImpl(columns, recordMaterializer.getRootConverter(), getType(), createdBy, cellManager));
       }
     });
   }
@@ -219,14 +222,26 @@ public class MessageColumnIO extends GroupColumnIO {
      */
     private Map<GroupColumnIO, List<ColumnWriter>> groupToLeafWriter = new HashMap<>();
 
+    /**
+     * Maintain a map from Original Columns to the Index of their sibling encrypted leaf.
+     *
+     */
+    private Map<String[], Integer> originalColumnToEncryptedLeafIndex = new HashMap<>();
 
     /*
      * Cache nulls for each group node. It only stores the repetition level, since the definition level
      * should always be the definition level of the group node.
      */
     private Map<GroupColumnIO, IntArrayList> groupNullCache = new HashMap<>();
+    // Cache all bufferedColumnWriters because we need a reference to them to call flush at endMessage time.
+    private final Map<ColumnDescriptor, BufferedColumnWriter> originalColumnToBufferedWriter = new HashMap<>();
+    // Cache a mapping between original column and its notify column id (if any).
+    // In pass through mode - the encrypted column is wrapped as a NotifyColumn
+    // In regular cell encryption - the "provider" column is wrapped as a NotifyColumn.
+    private Map<ColumnDescriptor, Integer> originalColToNotifyColId = new HashMap<>();
     private final ColumnWriteStore columns;
     private boolean emptyField = true;
+    private final CellManager cellManager;
 
     private void buildGroupToLeafWriterMap(PrimitiveColumnIO primitive, ColumnWriter writer) {
       GroupColumnIO parent = primitive.getParent();
@@ -245,18 +260,133 @@ public class MessageColumnIO extends GroupColumnIO {
       return writers;
     }
 
-    public MessageColumnIORecordConsumer(ColumnWriteStore columns) {
+    private void addNotifyColumnObservers() {
+      if (cellManager == null) {
+        // Nothing to observe because rootcomply is disabled.
+        return;
+      }
+      for (Map.Entry<ColumnDescriptor, BufferedColumnWriter> buffered : originalColumnToBufferedWriter.entrySet()) {
+        ColumnDescriptor originalDesc = buffered.getKey();
+        BufferedColumnWriter bufferedColumnWriter = buffered.getValue();
+        NotifyColumnWriter notifyWriter =
+          (NotifyColumnWriter) columnWriters[originalColToNotifyColId.get(originalDesc)];
+        notifyWriter.addObserver(bufferedColumnWriter);
+      }
+    }
+
+    private PrimitiveColumnIO getEncryptedColIO(PrimitiveColumnIO originalColumnIO) {
+      String[] encryptedColumn = cellManager.getEncryptedColumn(originalColumnIO.getFieldPath());
+      if (encryptedColumn == null || encryptedColumn.length == 0) {
+        throw new IllegalStateException("Configured encrypted column path is empty or invalid" +
+          " for the original path = " + Arrays.toString(originalColumnIO.getFieldPath()));
+      }
+      return getColumnIOWithPath(originalColumnIO, encryptedColumn);
+    }
+
+    private PrimitiveColumnIO getProviderColIO(PrimitiveColumnIO originalColumnIO) {
+      String[] providerPath = cellManager.getProviderColumn(originalColumnIO.getFieldPath());
+      if (providerPath == null || providerPath.length == 0) {
+        throw new IllegalStateException("Configured provider column path is empty or invalid" +
+          " for the original path = " + Arrays.toString(originalColumnIO.getFieldPath()));
+      }
+      return getColumnIOWithPath(originalColumnIO, providerPath);
+    }
+
+    // Columns marked as original by CellManager are guaranteed to have a sibling Encrypt column.
+    private ColumnWriter getEncryptedColumnWriter(ColumnWriteStore columns,
+                                                  PrimitiveColumnIO originalColumnIO) {
+      String[] encryptedColPath = cellManager.getEncryptedColumn(originalColumnIO.getFieldPath());
+      if (encryptedColPath == null || encryptedColPath.length == 0) {
+        throw new IllegalStateException("Configured encrypted column path is empty or invalid " +
+          "for the original path = " + Arrays.toString(originalColumnIO.getFieldPath()));
+      }
+      String encryptedLeaf = encryptedColPath[encryptedColPath.length - 1];
+      PrimitiveColumnIO encryptedColumnIO = (PrimitiveColumnIO) originalColumnIO.getParent().getChild(encryptedLeaf);
+      if (encryptedColumnIO.getPrimitive() != PrimitiveType.PrimitiveTypeName.BINARY) {
+        throw new UnsupportedOperationException("Non-binary encrypted columns not supported by cell encryption");
+      }
+      originalColumnToEncryptedLeafIndex.put(originalColumnIO.getFieldPath(), encryptedColumnIO.getIndex());
+      return columns.getColumnWriter(encryptedColumnIO.getColumnDescriptor());
+    }
+
+    // Decorate ORIGINAL / ENCRYPTED columns to write pre cell encrypted data while maintaining correct stats
+    private ColumnWriter decorateForPassThrough(ColumnWriter columnWriter,
+                                                PrimitiveColumnIO primitiveColumnIO) {
+      CellManager.CellColumnType cellColumnType = cellManager.getColumnType(ColumnPath
+        .get(primitiveColumnIO.getFieldPath()));
+      if (cellColumnType == CellManager.CellColumnType.ORIGINAL) {
+        PrimitiveColumnIO encryptedColIO = getEncryptedColIO(primitiveColumnIO);
+        StatsBufferedColumnWriter statsColumnWriter = new StatsBufferedColumnWriter(columnWriter,
+          cellManager, primitiveColumnIO.getPrimitive(),
+          primitiveColumnIO.getName(), encryptedColIO.getName());
+        originalColumnToBufferedWriter
+          .put(primitiveColumnIO.getColumnDescriptor(), statsColumnWriter);
+        originalColToNotifyColId.put(primitiveColumnIO.getColumnDescriptor(),
+          encryptedColIO.getId());
+        return statsColumnWriter;
+      } else if (cellColumnType == CellManager.CellColumnType.ENCRYPTED) {
+        return new NotifyColumnWriter(columnWriter);
+      }
+      return columnWriter;
+    }
+
+    // Decorate the ORIGINAL/ENCRYPTED/PROVIDER ColumnWriters for cell encryption if needed
+    private ColumnWriter decorateForCellEncryption(ColumnWriter columnWriter, PrimitiveColumnIO primitiveColumnIO) {
+      CellManager.CellColumnType cellColumnType = cellManager.getColumnType(ColumnPath
+        .get(primitiveColumnIO.getFieldPath()));
+      if (cellColumnType == CellManager.CellColumnType.ORIGINAL) {
+        PrimitiveColumnIO providerColIO = getProviderColIO(primitiveColumnIO);
+        ColumnWriter encryptedColumnWriter = getEncryptedColumnWriter(columns, primitiveColumnIO);
+        int definitionLevelToWriteNull = primitiveColumnIO.getParent().getDefinitionLevel();
+        int maxProviderRepetitionLevel = providerColIO.getRepetitionLevel();
+        DualBufferedColumnWriter bcw = new DualBufferedColumnWriter(columnWriter, encryptedColumnWriter,
+          cellManager, primitiveColumnIO.getPrimitive(),
+          definitionLevelToWriteNull, maxProviderRepetitionLevel);
+        // Cache the buffered writers to flush them at endMessage time efficiently.
+        originalColumnToBufferedWriter.put(primitiveColumnIO.getColumnDescriptor(), bcw);
+        originalColToNotifyColId.put(primitiveColumnIO.getColumnDescriptor(),
+          providerColIO.getId());
+        if (DEBUG) LOG.debug("Initialized RootComply DualBufferedColumnWriter" +
+          " for col = {}", Arrays.toString(primitiveColumnIO.getFieldPath()));
+        return bcw;
+      } else if (cellColumnType == CellManager.CellColumnType.ENCRYPTED) {
+        if (DEBUG) LOG.debug("Initialized RootComply DiscardColumnWriter" +
+          " for col = {}", Arrays.toString(primitiveColumnIO.getFieldPath()));
+        return new DiscardColumnWriter(columnWriter);
+      } else if (cellColumnType == CellManager.CellColumnType.PROVIDER) {
+        if (DEBUG) LOG.debug("Initialized RootComply NotifyColumnWriter" +
+          " for col = {}", Arrays.toString(primitiveColumnIO.getFieldPath()));
+        return new NotifyColumnWriter(columnWriter);
+      }
+      return columnWriter;
+    }
+
+    private ColumnWriter getColumnWriterFromWriteStore(ColumnWriteStore columns,
+                                                       PrimitiveColumnIO primitiveColumnIO) {
+      ColumnWriter columnWriter = columns.getColumnWriter(primitiveColumnIO.getColumnDescriptor());
+      if (cellManager == null) {
+        return columnWriter;
+      } else if (cellManager.isPassThroughModeEnabled()) {
+        return decorateForPassThrough(columnWriter, primitiveColumnIO);
+      } else {
+        return decorateForCellEncryption(columnWriter, primitiveColumnIO);
+      }
+    }
+
+    public MessageColumnIORecordConsumer(ColumnWriteStore columns, CellManager cellManager) {
       this.columns = columns;
       int maxDepth = 0;
       this.columnWriters = new ColumnWriter[MessageColumnIO.this.getLeaves().size()];
+      this.cellManager = cellManager;
 
       for (PrimitiveColumnIO primitiveColumnIO : MessageColumnIO.this.getLeaves()) {
-        ColumnWriter w = columns.getColumnWriter(primitiveColumnIO.getColumnDescriptor());
+        ColumnWriter w = getColumnWriterFromWriteStore(columns, primitiveColumnIO);
         maxDepth = Math.max(maxDepth, primitiveColumnIO.getFieldPath().length);
         columnWriters[primitiveColumnIO.getId()] = w;
         buildGroupToLeafWriterMap(primitiveColumnIO, w);
       }
 
+      addNotifyColumnObservers();
       fieldsWritten = new FieldsMarker[maxDepth];
       for (int i = 0; i < maxDepth; i++) {
         fieldsWritten[i] = new FieldsMarker();
@@ -296,6 +426,7 @@ public class MessageColumnIO extends GroupColumnIO {
 
     @Override
     public void endMessage() {
+      flushBufferedColumnWriters(false);
       writeNullForMissingFieldsAtCurrentLevel();
 
       // We need to flush the cached null values before ending the record to ensure that everything is sent to the
@@ -324,6 +455,7 @@ public class MessageColumnIO extends GroupColumnIO {
     @Override
     public void endField(String field, int index) {
       if (DEBUG) log("endField({}, {})",field ,index);
+      setFieldsWrittenForCellEncryption(index);
       currentColumnIO = currentColumnIO.getParent();
       if (emptyField) {
         throw new ParquetEncodingException("empty fields are illegal, the field should be ommited completely instead");
@@ -331,6 +463,32 @@ public class MessageColumnIO extends GroupColumnIO {
       fieldsWritten[currentLevel].markWritten(index);
       r[currentLevel] = currentLevel == 0 ? 0 : r[currentLevel - 1];
       if (DEBUG) printState();
+    }
+
+    // Given any ColumnIO (any node in the schema tree) and a path to a leaf column
+    // this method traverse to the root and get the ColumnIO specified by the leaf path.
+    private PrimitiveColumnIO getColumnIOWithPath(ColumnIO anyColumnIO, String[] leafPath) {
+      ColumnIO finalColumnIO = anyColumnIO;
+      // Traverse to root columnIO
+      while (finalColumnIO.getParent() != null) {
+        finalColumnIO = finalColumnIO.getParent();
+      }
+
+      // Traverse down to the desired leaf node and return it
+      for (String child : leafPath) {
+        finalColumnIO = ((GroupColumnIO) finalColumnIO).getChild(child);
+      }
+      return (PrimitiveColumnIO) finalColumnIO;
+    }
+
+    private void flushBufferedColumnWriters(boolean isFinalFlush) {
+      if (cellManager == null) {
+        // Nothing to flush because RootComply is disabled
+        return;
+      }
+      for (BufferedColumnWriter bufferedColumnWriter : originalColumnToBufferedWriter.values()) {
+        bufferedColumnWriter.writeBufferedValues(isFinalFlush);
+      }
     }
 
     private void writeNullForMissingFieldsAtCurrentLevel() {
@@ -506,11 +664,40 @@ public class MessageColumnIO extends GroupColumnIO {
     @Override
     public void flush() {
       flushCachedNulls(MessageColumnIO.this);
+      // flushCachedNulls will push any remaining nulls to bufferedColumnWriters,
+      // need to flush bufferedColumnWriters one last time before closing writer.
+      // flushBufferedColumnWriters must be called after flushCachedNulls
+      flushBufferedColumnWriters(true);
+    }
+
+    private void setFieldsWrittenForCellEncryption(int index) {
+      if (cellManager == null || cellManager.isPassThroughModeEnabled()) {
+        // Mark all fields as normal when cellManager is disabled or if passThrough mode
+        fieldsWritten[currentLevel].markWritten(index);
+        return;
+      }
+
+      CellManager.CellColumnType currentType = cellManager.getColumnType(ColumnPath.get(currentColumnIO.getFieldPath()));
+      if (currentType == CellManager.CellColumnType.ORIGINAL) {
+        // Need to mark both original + encrypted as written so parquet doesn't automatically insert nulls.
+        fieldsWritten[currentLevel].markWritten(index);
+        int encryptIndex = originalColumnToEncryptedLeafIndex.get(currentColumnIO.getFieldPath());
+        fieldsWritten[currentLevel].markWritten(encryptIndex);
+      } else if (currentType == CellManager.CellColumnType.ENCRYPTED) {
+        // Do nothing - let ENCRYPTED fieldsWritten be managed by original column case
+      } else {
+        // All other column types include PROVIDER or non-cell encryption related columns are markWritten normally.
+        fieldsWritten[currentLevel].markWritten(index);
+      }
     }
   }
 
   public RecordConsumer getRecordWriter(ColumnWriteStore columns) {
-    RecordConsumer recordWriter = new MessageColumnIORecordConsumer(columns);
+    return getRecordWriter(columns, null);
+  }
+
+  public RecordConsumer getRecordWriter(ColumnWriteStore columns, CellManager cellManager) {
+    RecordConsumer recordWriter = new MessageColumnIORecordConsumer(columns, cellManager);
     if (DEBUG) recordWriter = new RecordConsumerLoggingWrapper(recordWriter);
     return validating ? new ValidatingRecordConsumer(recordWriter, getType()) : recordWriter;
   }

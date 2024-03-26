@@ -24,6 +24,7 @@ import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
+import org.apache.parquet.column.CellManager;
 import org.apache.parquet.column.ParquetProperties;
 import org.apache.parquet.column.ParquetProperties.WriterVersion;
 import org.apache.parquet.crypto.FileEncryptionProperties;
@@ -33,6 +34,8 @@ import org.apache.parquet.hadoop.metadata.ParquetMetadata;
 import org.apache.parquet.hadoop.util.HadoopOutputFile;
 import org.apache.parquet.io.OutputFile;
 import org.apache.parquet.schema.MessageType;
+
+import static org.apache.parquet.crypto.CryptoClassLoader.getCellManager;
 
 /**
  * Write records to a Parquet file.
@@ -195,6 +198,23 @@ public class ParquetWriter<T> implements Closeable {
         enableDictionary, validating, writerVersion, conf);
   }
 
+  @Deprecated
+  public ParquetWriter(
+    Path file,
+    WriteSupport<T> writeSupport,
+    CompressionCodecName compressionCodecName,
+    int blockSize,
+    int pageSize,
+    int dictionaryPageSize,
+    boolean enableDictionary,
+    boolean validating,
+    WriterVersion writerVersion,
+    Configuration conf, FileEncryptionProperties encryptionProperties) throws IOException {
+    this(file, ParquetFileWriter.Mode.CREATE, writeSupport,
+      compressionCodecName, blockSize, pageSize, dictionaryPageSize,
+      enableDictionary, validating, writerVersion, conf, encryptionProperties);
+  }
+
   /**
    * Create a new ParquetWriter.
    *
@@ -233,7 +253,32 @@ public class ParquetWriter<T> implements Closeable {
             .withDictionaryPageSize(dictionaryPageSize)
             .withDictionaryEncoding(enableDictionary)
             .withWriterVersion(writerVersion)
-            .build(), null);
+            .build(), null, null);
+  }
+
+  @Deprecated
+  public ParquetWriter(
+    Path file,
+    ParquetFileWriter.Mode mode,
+    WriteSupport<T> writeSupport,
+    CompressionCodecName compressionCodecName,
+    int blockSize,
+    int pageSize,
+    int dictionaryPageSize,
+    boolean enableDictionary,
+    boolean validating,
+    WriterVersion writerVersion,
+    Configuration conf,
+    FileEncryptionProperties encryptionProperties) throws IOException {
+    this(HadoopOutputFile.fromPath(file, conf),
+      mode, writeSupport, compressionCodecName, blockSize,
+      validating, conf, MAX_PADDING_SIZE_DEFAULT,
+      ParquetProperties.builder()
+        .withPageSize(pageSize)
+        .withDictionaryPageSize(dictionaryPageSize)
+        .withDictionaryEncoding(enableDictionary)
+        .withWriterVersion(writerVersion)
+        .build(), encryptionProperties, null);
   }
 
   /**
@@ -274,7 +319,8 @@ public class ParquetWriter<T> implements Closeable {
       Configuration conf,
       int maxPaddingSize,
       ParquetProperties encodingProps,
-      FileEncryptionProperties encryptionProperties) throws IOException {
+      FileEncryptionProperties encryptionProperties,
+      CellManager cellManager) throws IOException {
 
     WriteSupport.WriteContext writeContext = writeSupport.init(conf);
     MessageType schema = writeContext.getSchema();
@@ -286,10 +332,15 @@ public class ParquetWriter<T> implements Closeable {
           path == null ? null : new Path(path), writeContext);
     }
 
+    // Try to get CellManager from configured class, if it is not set at writer creation.
+    if (cellManager == null) {
+      cellManager = getCellManager(conf, writeContext);
+    }
+
     ParquetFileWriter fileWriter = new ParquetFileWriter(
       file, schema, mode, rowGroupSize, maxPaddingSize,
       encodingProps.getColumnIndexTruncateLength(), encodingProps.getStatisticsTruncateLength(),
-      encodingProps.getPageWriteChecksumEnabled(), encryptionProperties);
+      encodingProps.getPageWriteChecksumEnabled(), encryptionProperties, cellManager);
     fileWriter.start();
 
     this.codecFactory = new CodecFactory(conf, encodingProps.getPageSizeThreshold());
@@ -360,6 +411,7 @@ public class ParquetWriter<T> implements Closeable {
     private boolean enableValidation = DEFAULT_IS_VALIDATING_ENABLED;
     private ParquetProperties.Builder encodingPropsBuilder =
         ParquetProperties.builder();
+    private CellManager cellManager = null;
 
     protected Builder(Path path) {
       this.path = path;
@@ -568,6 +620,11 @@ public class ParquetWriter<T> implements Closeable {
       return self();
     }
 
+    public SELF withCellManager(CellManager cellManager) {
+      this.cellManager = cellManager;
+      return self();
+    }
+
     /**
      * Enables writing page level checksums for the constructed writer.
      *
@@ -699,12 +756,12 @@ public class ParquetWriter<T> implements Closeable {
       if (file != null) {
         return new ParquetWriter<>(file,
             mode, getWriteSupport(conf), codecName, rowGroupSize, enableValidation, conf,
-            maxPaddingSize, encodingPropsBuilder.build(), encryptionProperties);
+            maxPaddingSize, encodingPropsBuilder.build(), encryptionProperties, cellManager);
       } else {
         return new ParquetWriter<>(HadoopOutputFile.fromPath(path, conf),
             mode, getWriteSupport(conf), codecName,
             rowGroupSize, enableValidation, conf, maxPaddingSize,
-            encodingPropsBuilder.build(), encryptionProperties);
+            encodingPropsBuilder.build(), encryptionProperties, cellManager);
       }
     }
   }

@@ -76,7 +76,7 @@ public class DefaultValuesWriterFactory implements ValuesWriterFactory {
   }
 
   static ValuesWriter dictWriterWithFallBack(ColumnDescriptor path, ParquetProperties parquetProperties, Encoding dictPageEncoding, Encoding dataPageEncoding, ValuesWriter writerToFallBackTo) {
-    if (parquetProperties.isDictionaryEnabled(path)) {
+    if (parquetProperties.isDictionaryEnabled(path) && !parquetProperties.isColumnDictionaryDisabled(path)) {
       return FallbackValuesWriter.of(
         dictionaryWriter(path, parquetProperties, dictPageEncoding, dataPageEncoding),
         writerToFallBackTo);

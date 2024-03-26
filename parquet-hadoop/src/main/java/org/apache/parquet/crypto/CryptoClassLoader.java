@@ -20,6 +20,7 @@
 package org.apache.parquet.crypto;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.parquet.column.CellManager;
 import org.apache.parquet.hadoop.BadConfigurationException;
 import org.apache.parquet.hadoop.api.WriteSupport.WriteContext;
 import org.apache.parquet.hadoop.util.ConfigurationUtil;
@@ -122,6 +123,39 @@ public class CryptoClassLoader {
     } catch (InstantiationException | IllegalAccessException e) {
       throw new BadConfigurationException("could not instantiate crypto metadata retriever class: "
         + cryptoMetadataRetrieverClass, e);
+    }
+  }
+
+  public static CellManager getCellManager(Configuration conf, WriteContext wc) {
+    if (!cryptoCellManagerFactoryExists(conf)) {
+      return null;
+    }
+    return getCellManagerFactory(conf).get(conf, wc);
+  }
+
+  /**
+   * If CRYPTO_CELL_MANAGER_FACTORY_CLASS exists in configuration, the relative class will be invoked.
+   * The class should implement the interface of CellManagerFactory.
+   *
+   * @param conf to find the configuration
+   * @return the configured crypto cell manager factory, or null if not configured
+   */
+  public static CellManagerFactory getCellManagerFactory(Configuration conf){
+    @SuppressWarnings("unchecked")
+    final Class<CellManagerFactory> cellManagerFactoryClass = (Class<CellManagerFactory>) ConfigurationUtil
+      .getClassFromConfig(conf,
+        CRYPTO_CELL_MANAGER_FACTORY_CLASS,
+        CellManagerFactory.class);
+    if (cellManagerFactoryClass == null) {
+      return null;
+    }
+
+    try {
+      Constructor<CellManagerFactory> constructor = cellManagerFactoryClass.getConstructor();
+      return constructor.newInstance();
+    } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
+      throw new BadConfigurationException("could not instantiate crypto cell manager factory class: "
+        + cellManagerFactoryClass, e);
     }
   }
 }

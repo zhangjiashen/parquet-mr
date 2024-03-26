@@ -19,6 +19,7 @@
 package org.apache.parquet.crypto;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.parquet.hadoop.BadConfigurationException;
 import org.apache.parquet.hadoop.api.WriteSupport;
 import org.apache.parquet.schema.ExtType;
 import org.apache.parquet.schema.MessageType;
@@ -84,6 +85,45 @@ public class CryptoClassLoaderTest {
     assertNull(fileDecryptionProperties.getAADPrefix());
   }
 
+
+  @Test
+  public void cryptoCellManagerFactoryExists() {
+    Configuration configuration = new Configuration();
+    assertFalse(CryptoClassLoader.cryptoCellManagerFactoryExists(configuration));
+    setCellManagerFactoryClass(configuration);
+    assertTrue(CryptoClassLoader.cryptoCellManagerFactoryExists(configuration));
+  }
+
+  @Test
+  public void getCellManagerFactory() {
+    Configuration configuration = new Configuration();
+    assertNull(CryptoClassLoader.getCellManagerFactory(configuration));
+    setCellManagerFactoryClass(configuration);
+    assertTrue(CryptoClassLoader.getCellManagerFactory(configuration) instanceof CellManagerFactory);
+  }
+
+  @Test
+  public void getNullCellManagerFactory() {
+    Configuration configuration = new Configuration();
+    // NOTE: it is impossible for hadoopConf value to be set as null, so spark sets null -> "null"
+    configuration.set(CryptoClassLoader.CRYPTO_CELL_MANAGER_FACTORY_CLASS, "null");
+    assertNull(CryptoClassLoader.getCellManagerFactory(configuration));
+  }
+
+  @Test(expected = BadConfigurationException.class)
+  public void getCellManagerFactoryWrongClass() {
+    Configuration configuration = new Configuration();
+    setCellManagerFactoryClass(configuration, Configuration.class);
+    CryptoClassLoader.getCellManagerFactory(configuration);
+  }
+
+  @Test(expected = BadConfigurationException.class)
+  public void getCellManagerFactoryConstructorThrow() {
+    Configuration configuration = new Configuration();
+    setCellManagerFactoryClass(configuration, SampleThrowCellManagerFactory.class);
+    CryptoClassLoader.getCellManagerFactory(configuration);
+  }
+
   private WriteSupport.WriteContext createWriteContext() {
     Type type =  new PrimitiveType(Type.Repetition.REQUIRED, PrimitiveType.PrimitiveTypeName.BINARY, "test");
     Type extType = new ExtType<>(type);
@@ -98,5 +138,13 @@ public class CryptoClassLoaderTest {
 
   private void setRetrieverClass(Configuration configuration) {
     configuration.set(CryptoClassLoader.CRYPTO_METADATA_RETRIEVER_CLASS, org.apache.parquet.crypto.SampleFileEncDecryptorRetriever.class.getName());
+  }
+
+  private void setCellManagerFactoryClass(Configuration configuration) {
+    setCellManagerFactoryClass(configuration, SampleCellManagerFactory.class);
+  }
+
+  private void setCellManagerFactoryClass(Configuration configuration, Class<?> cls) {
+    configuration.set(CryptoClassLoader.CRYPTO_CELL_MANAGER_FACTORY_CLASS, cls.getName());
   }
 }

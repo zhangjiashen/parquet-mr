@@ -25,7 +25,7 @@ public class ConfigurationUtil {
 
   public static Class<?> getClassFromConfig(Configuration configuration, String configName, Class<?> assignableFrom) {
     final String className = configuration.get(configName);
-    if (className == null) {
+    if (className == null || className.equals("null")) {
       return null;
     }
     

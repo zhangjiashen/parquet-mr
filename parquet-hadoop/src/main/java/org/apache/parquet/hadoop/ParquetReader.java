@@ -33,6 +33,7 @@ import org.apache.hadoop.fs.Path;
 
 import org.apache.parquet.ParquetReadOptions;
 import org.apache.parquet.Preconditions;
+import org.apache.parquet.column.CellManager;
 import org.apache.parquet.compression.CompressionCodecFactory;
 import org.apache.parquet.crypto.FileDecryptionProperties;
 import org.apache.parquet.filter.UnboundRecordFilter;
@@ -319,6 +320,11 @@ public class ParquetReader<T> implements Closeable {
 
     public Builder<T> withCodecFactory(CompressionCodecFactory codecFactory) {
       optionsBuilder.withCodecFactory(codecFactory);
+      return this;
+    }
+
+    public Builder<T> withCellManager(CellManager cellManager) {
+      optionsBuilder.withCellManager(cellManager);
       return this;
     }
     

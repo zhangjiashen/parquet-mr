@@ -22,6 +22,7 @@ package org.apache.parquet;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.parquet.bytes.ByteBufferAllocator;
+import org.apache.parquet.column.CellManager;
 import org.apache.parquet.compression.CompressionCodecFactory;
 import org.apache.parquet.crypto.DecryptionPropertiesFactory;
 import org.apache.parquet.crypto.FileDecryptionProperties;
@@ -65,11 +66,12 @@ public class HadoopReadOptions extends ParquetReadOptions {
                             int maxAllocationSize,
                             Map<String, String> properties,
                             Configuration conf,
-                            FileDecryptionProperties fileDecryptionProperties) {
+                            FileDecryptionProperties fileDecryptionProperties,
+                            CellManager cellManager) {
     super(
         useSignedStringMinMax, useStatsFilter, useDictionaryFilter, useRecordFilter, useColumnIndexFilter,
       usePageChecksumVerification, useBloomFilter, readMaskedValue, maskedColVisibble,
-      recordFilter, metadataFilter, codecFactory, allocator, maxAllocationSize, properties, fileDecryptionProperties
+      recordFilter, metadataFilter, codecFactory, allocator, maxAllocationSize, properties, fileDecryptionProperties, cellManager
     );
     this.conf = conf;
   }
@@ -135,7 +137,7 @@ public class HadoopReadOptions extends ParquetReadOptions {
         useSignedStringMinMax, useStatsFilter, useDictionaryFilter, useRecordFilter,
         useColumnIndexFilter, usePageChecksumVerification, useBloomFilter,
         readMaskedValue, maskedColVisible, recordFilter, metadataFilter, codecFactory,
-        allocator, maxAllocationSize, properties, conf, fileDecryptionProperties);
+        allocator, maxAllocationSize, properties, conf, fileDecryptionProperties, cellManager);
     }
   }
 

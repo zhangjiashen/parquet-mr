@@ -47,10 +47,7 @@ import org.apache.parquet.Preconditions;
 import org.apache.parquet.Version;
 import org.apache.parquet.bytes.BytesInput;
 import org.apache.parquet.bytes.BytesUtils;
-import org.apache.parquet.column.ColumnDescriptor;
-import org.apache.parquet.column.Encoding;
-import org.apache.parquet.column.EncodingStats;
-import org.apache.parquet.column.ParquetProperties;
+import org.apache.parquet.column.*;
 import org.apache.parquet.column.page.DictionaryPage;
 import org.apache.parquet.column.statistics.Statistics;
 import org.apache.parquet.column.values.bloomfilter.BloomFilter;
@@ -133,6 +130,9 @@ public class ParquetFileWriter {
 
   // The file encryptor
   private final InternalFileEncryptor fileEncryptor;
+
+  // cell encryption
+  private final CellManager cellManager;
 
   // row group data
   private BlockMetaData currentBlock; // appended to by endColumn
@@ -303,31 +303,31 @@ public class ParquetFileWriter {
       int statisticsTruncateLength, boolean pageWriteChecksumEnabled)
           throws IOException{
     this(file, schema, mode, rowGroupSize, maxPaddingSize, columnIndexTruncateLength,
-      statisticsTruncateLength, pageWriteChecksumEnabled, null, null);
+      statisticsTruncateLength, pageWriteChecksumEnabled, null, null, null);
   }
 
   public ParquetFileWriter(OutputFile file, MessageType schema, Mode mode,
                            long rowGroupSize, int maxPaddingSize, int columnIndexTruncateLength,
                            int statisticsTruncateLength, boolean pageWriteChecksumEnabled,
-                           FileEncryptionProperties encryptionProperties)
+                           FileEncryptionProperties encryptionProperties, CellManager cellManager)
     throws IOException {
     this(file, schema, mode, rowGroupSize, maxPaddingSize, columnIndexTruncateLength,
-      statisticsTruncateLength, pageWriteChecksumEnabled, encryptionProperties, null);
+      statisticsTruncateLength, pageWriteChecksumEnabled, encryptionProperties, null, cellManager);
   }
 
   public ParquetFileWriter(OutputFile file, MessageType schema, Mode mode,
                            long rowGroupSize, int maxPaddingSize, int columnIndexTruncateLength,
                            int statisticsTruncateLength, boolean pageWriteChecksumEnabled,
-                           InternalFileEncryptor encryptor)
+                           InternalFileEncryptor encryptor, CellManager cellManager)
     throws IOException {
     this(file, schema, mode, rowGroupSize, maxPaddingSize, columnIndexTruncateLength,
-      statisticsTruncateLength, pageWriteChecksumEnabled, null, encryptor);
+      statisticsTruncateLength, pageWriteChecksumEnabled, null, encryptor, cellManager);
   }
 
   private ParquetFileWriter(OutputFile file, MessageType schema, Mode mode,
                            long rowGroupSize, int maxPaddingSize, int columnIndexTruncateLength,
                            int statisticsTruncateLength, boolean pageWriteChecksumEnabled,
-                           FileEncryptionProperties encryptionProperties, InternalFileEncryptor encryptor)
+                           FileEncryptionProperties encryptionProperties, InternalFileEncryptor encryptor, CellManager cellManager)
     throws IOException {
     TypeUtil.checkValidWriteSchema(schema);
 
@@ -353,6 +353,7 @@ public class ParquetFileWriter {
     this.crc = pageWriteChecksumEnabled ? new CRC32() : null;
 
     this.metadataConverter = new ParquetMetadataConverter(statisticsTruncateLength);
+    this.cellManager = cellManager;
 
     if (null == encryptionProperties && null == encryptor) {
       this.fileEncryptor = null;
@@ -413,6 +414,7 @@ public class ParquetFileWriter {
     this.crc = pageWriteChecksumEnabled ? new CRC32() : null;
     this.metadataConverter = new ParquetMetadataConverter(ParquetProperties.DEFAULT_STATISTICS_TRUNCATE_LENGTH);
     this.fileEncryptor = null;
+    this.cellManager = null;
   }
   /**
    * start the file
@@ -430,6 +432,10 @@ public class ParquetFileWriter {
 
   public InternalFileEncryptor getEncryptor() {
     return fileEncryptor;
+  }
+
+  public CellManager getCellManager() {
+    return cellManager;
   }
 
   /**

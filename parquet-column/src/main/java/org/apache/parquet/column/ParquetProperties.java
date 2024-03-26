@@ -18,9 +18,7 @@
  */
 package org.apache.parquet.column;
 
-import java.util.Objects;
-import java.util.OptionalDouble;
-import java.util.OptionalLong;
+import java.util.*;
 
 import org.apache.parquet.Preconditions;
 import org.apache.parquet.bytes.ByteBufferAllocator;
@@ -108,6 +106,7 @@ public class ParquetProperties {
   private final int pageRowCountLimit;
   private final boolean pageWriteChecksumEnabled;
   private final boolean enableByteStreamSplit;
+  private Set<ColumnDescriptor> disabledDictionaryColumns;
 
   private ParquetProperties(Builder builder) {
     this.pageSizeThreshold = builder.pageSize;
@@ -131,6 +130,7 @@ public class ParquetProperties {
     this.pageRowCountLimit = builder.pageRowCountLimit;
     this.pageWriteChecksumEnabled = builder.pageWriteChecksumEnabled;
     this.enableByteStreamSplit = builder.enableByteStreamSplit;
+    this.disabledDictionaryColumns = new HashSet<>(); // Empty by default - no columns disabled for dictionary
   }
 
   public ValuesWriter newRepetitionLevelWriter(ColumnDescriptor path) {
@@ -165,6 +165,14 @@ public class ParquetProperties {
 
   public ValuesWriter newValuesWriter(ColumnDescriptor path) {
     return valuesWriterFactory.newValuesWriter(path);
+  }
+
+  public void disableDictionaryForColumns(Set<ColumnDescriptor> disabledColumns) {
+    this.disabledDictionaryColumns.addAll(disabledColumns);
+  }
+
+  public boolean isColumnDictionaryDisabled(ColumnDescriptor col) {
+    return disabledDictionaryColumns.contains(col);
   }
 
   public int getPageSizeThreshold() {

@@ -19,6 +19,7 @@
 package org.apache.parquet.hadoop;
 
 import static org.apache.parquet.column.ParquetProperties.DEFAULT_BLOOM_FILTER_ENABLED;
+import static org.apache.parquet.crypto.CryptoClassLoader.getCellManager;
 import static org.apache.parquet.hadoop.ParquetWriter.DEFAULT_BLOCK_SIZE;
 import static org.apache.parquet.hadoop.util.ContextUtil.getConfiguration;
 
@@ -35,6 +36,7 @@ import org.apache.hadoop.mapreduce.RecordWriter;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
+import org.apache.parquet.column.CellManager;
 import org.apache.parquet.column.ParquetProperties;
 import org.apache.parquet.column.ParquetProperties.WriterVersion;
 import org.apache.parquet.crypto.CryptoClassLoader;
@@ -480,10 +482,11 @@ public class ParquetOutputFormat<T> extends FileOutputFormat<Void, T> {
     WriteContext fileWriteContext = writeSupport.init(conf);
 
     FileEncryptionProperties encryptionProperties = createEncryptionProperties(conf, file, fileWriteContext);
+    CellManager cellManager = getCellManager(conf, fileWriteContext);
 
     ParquetFileWriter w = new ParquetFileWriter(HadoopOutputFile.fromPath(file, conf),
         fileWriteContext.getSchema(), mode, blockSize, maxPaddingSize, props.getColumnIndexTruncateLength(),
-        props.getStatisticsTruncateLength(), props.getPageWriteChecksumEnabled(), encryptionProperties);
+        props.getStatisticsTruncateLength(), props.getPageWriteChecksumEnabled(), encryptionProperties, cellManager);
     w.start();
 
     float maxLoad = conf.getFloat(ParquetOutputFormat.MEMORY_POOL_RATIO,

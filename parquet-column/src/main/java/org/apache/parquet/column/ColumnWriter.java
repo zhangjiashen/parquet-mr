@@ -81,7 +81,40 @@ public interface ColumnWriter {
    */
   void writeNull(int repetitionLevel, int definitionLevel);
 
- /**
+  /**
+   * Writes the current null value but uses valueForStats to update the stats instead of incrementing null count.
+   * This is used for RootComply Cell Encryption where the original column must track
+   * the stats of values written to the encr sister column.
+   * @param repetitionLevel a repetition level
+   * @param definitionLevel a definition level
+   * @param valueForStats a value written to the sister encr column which
+   *                      should be used for statistics purposes in current column.
+   */
+  default void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, int valueForStats) {
+    throw new UnsupportedOperationException("writeNullWithValueForStats not implemented for this ColumnWriter");
+  }
+
+  default void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, long valueForStats) {
+    throw new UnsupportedOperationException("writeNullWithValueForStats not implemented for this ColumnWriter");
+  }
+
+  default void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, boolean valueForStats) {
+    throw new UnsupportedOperationException("writeNullWithValueForStats not implemented for this ColumnWriter");
+  }
+
+  default void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, Binary valueForStats) {
+    throw new UnsupportedOperationException("writeNullWithValueForStats not implemented for this ColumnWriter");
+  }
+
+  default void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, float valueForStats) {
+    throw new UnsupportedOperationException("writeNullWithValueForStats not implemented for this ColumnWriter");
+  }
+
+  default void writeNullWithValueForStats(int repetitionLevel, int definitionLevel, double valueForStats) {
+    throw new UnsupportedOperationException("writeNullWithValueForStats not implemented for this ColumnWriter");
+  }
+
+  /**
   * Close the underlying store. This should be called when there are no
   * more data to be written.
   */

@@ -24,6 +24,7 @@ import java.util.PrimitiveIterator;
 import org.apache.parquet.VersionParser;
 import org.apache.parquet.VersionParser.ParsedVersion;
 import org.apache.parquet.VersionParser.VersionParseException;
+import org.apache.parquet.column.CellManager;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.ColumnReadStore;
 import org.apache.parquet.column.ColumnReader;
@@ -47,6 +48,7 @@ public class ColumnReadStoreImpl implements ColumnReadStore {
   private final GroupConverter recordConverter;
   private final MessageType schema;
   private final ParsedVersion writerVersion;
+  private final CellManager cellManager; // optional
 
   /**
    * @param pageReadStore underlying page storage
@@ -57,10 +59,18 @@ public class ColumnReadStoreImpl implements ColumnReadStore {
   public ColumnReadStoreImpl(PageReadStore pageReadStore,
                              GroupConverter recordConverter,
                              MessageType schema, String createdBy) {
+    this(pageReadStore, recordConverter, schema, createdBy, /*cellManager*/null);
+  }
+
+  public ColumnReadStoreImpl(PageReadStore pageReadStore,
+                             GroupConverter recordConverter,
+                             MessageType schema, String createdBy,
+                             CellManager cellManager) {
     super();
     this.pageReadStore = pageReadStore;
     this.recordConverter = recordConverter;
     this.schema = schema;
+    this.cellManager = cellManager;
 
     ParsedVersion version;
     try {
@@ -73,11 +83,25 @@ public class ColumnReadStoreImpl implements ColumnReadStore {
 
   @Override
   public ColumnReader getColumnReader(ColumnDescriptor path) {
-    PrimitiveConverter converter = getPrimitiveConverter(path);
     PageReader pageReader = pageReadStore.getPageReader(path);
     if (pageReader.isNullMaskedColumn()) {
       return null;
     }
+
+    // try retrieve original column path (if this column is the encrypted column)
+    String[] originPath = cellManager != null ? cellManager.getOriginalColumn(path.getPath()) : null;
+
+    PrimitiveConverter converter;
+    if (originPath != null && originPath.length > 0) {
+      // The given encrypted column has a matching original column. Create a
+      // wrapper converter to decrypt and pipe to the original column value
+      // converter.
+      converter = getPrimitiveConverter(originPath, true);
+    } else {
+      // non-encrypted column, retrieve its own primitive converter as is
+      converter = getPrimitiveConverter(path.getPath(), false);
+    }
+
     Optional<PrimitiveIterator.OfLong> rowIndexes = pageReadStore.getRowIndexes();
     if (rowIndexes.isPresent()) {
       return new SynchronizingColumnReader(path, pageReader, converter, writerVersion, rowIndexes.get());
@@ -86,21 +110,24 @@ public class ColumnReadStoreImpl implements ColumnReadStore {
     }
   }
 
-  private ColumnReaderImpl newMemColumnReader(ColumnDescriptor path, PageReader pageReader) {
-    PrimitiveConverter converter = getPrimitiveConverter(path);
-    return new ColumnReaderImpl(path, pageReader, converter, writerVersion);
-  }
-
-  private PrimitiveConverter getPrimitiveConverter(ColumnDescriptor path) {
+  private PrimitiveConverter getPrimitiveConverter(String[] path, boolean cellConvert) {
     Type currentType = schema;
     Converter currentConverter = recordConverter;
-    for (String fieldName : path.getPath()) {
+    for (String fieldName : path) {
       final GroupType groupType = currentType.asGroupType();
+      if (cellConvert && !groupType.containsField(fieldName)) {
+        // original column not requested, return a dummy converter to discard values
+        return new CellPrimitiveConverter();
+      }
       int fieldIndex = groupType.getFieldIndex(fieldName);
       currentType = groupType.getType(fieldName);
       currentConverter = currentConverter.asGroupConverter().getConverter(fieldIndex);
     }
     PrimitiveConverter converter = currentConverter.asPrimitiveConverter();
+    if (cellConvert) {
+      // request a wrapper converter to receive from encrypted column value
+      converter = new CellPrimitiveConverter(cellManager, currentType.asPrimitiveType(), converter);
+    }
     return converter;
   }
 
